@@ -13,10 +13,10 @@ future: true
 
 # SNS settings
 RSS: false
-weibo_username:     xiaojiejava
-zhihu_username:     xiaojiejava
+#weibo_username:     xiaojiejava
+#zhihu_username:     xiaojiejava
 github_username:    xiaojiejava
-twitter_username:   xiaojiejava
+#twitter_username:   xiaojiejava
 #facebook_username:  huxpro
 #linkedin_username:  firstname-lastname-idxxxx
 
