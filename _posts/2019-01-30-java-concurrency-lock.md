@@ -30,7 +30,7 @@ tags:
 
 本文主要讲述解决多线程安全(race condition)问题的锁机制
 
-### Synchronized
+### Synchronized(Java 1.6即以后)
 首先了解下对象在内存中的布局:
 
 分为三块，对象头、实例数据和对齐填充字节
@@ -89,11 +89,28 @@ ConcurrentHashMap分段锁(java1.7)
 何时使用: 
 优先使用synchronized当其满足不了需求需要用到高级特性时用ReentrantLock.
 
-### Optimistic Lock
-### Pessimistic Lock
-### AQS
-cas:
-CountDownLatch:
+### AQS(AbstractQueuedSynchronizer) ReentrantLock底层实现
+
+CAS:首先了解下CAS，即compare-and-swap比较和替换，存在三个基本操作数，内存地址 旧值 新值，当更新的时候只有旧值等于内存地址对应的值才会将内存地址的值更新为新值，否则更新失败。在并发较低的情况下，CAS比锁具有更好的性能。但是它有占用CPU资源和ABA等问题。
+
+AQS底层维护了一个变量volatile int state,如果一个线程想要获取锁则cas这个值如果cas成功则获取到锁，否则封装为AQS内部对象放到锁等待队列中。当释放锁的时候同样执行cas操作，并通知队列中的下一个等待线程。上面讲到的ReentrantLock的公平锁的实现是当线程发现队列中有等待的线程，不会竞争锁，直接进入队列。非公平锁会尝试竞争锁，所以可能比队列中已有的线程优先获取到锁。
+
+CountDownLatch: 
+利用AQS实现，state的大小表示可同时持有锁的线程个数，每个线程调用countDown的时候回将state-1，减至0的时候欢迎主线程。
+
+ReentrantReadWriteLock: 
+利用AQS实现，state分为高16位和低16位，低16位独占写锁，高16位共享锁读锁。
+
+独占锁: 只有一个线程能同时获取到锁，对应AQS实现为cas到某个值成功则获得锁，否则等待。
+共享锁：多个线程能同时获取到，对应AWS实现为cas到某个<count的值则获取到锁，否则等待。
+
+### Optimistic Lock 乐观锁
+
+
+### Pessimistic Lock 悲观锁
+
+
+
 ### 线程池
 ### ThreadLocal
 
