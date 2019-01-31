@@ -30,7 +30,7 @@ tags:
 
 本文主要讲述解决多线程安全(race condition)问题的锁机制
 
-### Synchronized(Java 1.6即以后)
+### Synchronized(Java 1.6及以后)
 首先了解下对象在内存中的布局:
 
 分为三块，对象头、实例数据和对齐填充字节
