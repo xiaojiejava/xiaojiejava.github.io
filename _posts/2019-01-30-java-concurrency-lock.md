@@ -136,6 +136,7 @@ ThreadLocal的实现原理是，在Thread里面维护一个ThreadLocalMap,其中
 可以设想一下，如果没有池，每次需要线程的时候直接新建一个，如果某一时刻大量请求涌入会创建大量的线程，然而对于服务器或单进程而言，可承受的最大线程个数是有上限的，如果不限制必然会导致超过上限，整个服务直接挂掉。每次线程的新建都需要时间，通过线程池实现线程复用避免了频繁创建的开销。java提供了线程池的支持。
 
 ThreadPoolExecutor的构造参数:
+
 1. corePoolSize 核心线程个数
 2. maximumPoolSize 最大的线程个数
 3. keepAliveTime、unit 超过核心线程数的线程空闲的时间
@@ -143,6 +144,7 @@ ThreadPoolExecutor的构造参数:
 5. RejectedExecutionHandler handler
 
 各个参数作用为当需要分配线程的时候
+
 1. 如果线程池个数 < corePoolSize,则直接新建一个线程处理。否则将请求放入阻塞队列。
 2. 阻塞队列有有限和无限阻塞队列之分，如果是无限阻塞队列则后续所有的请求都会放到这个队列（坑:需要注意如果无限堆积可能OOM）。
 3. 如果是有限队列当队列满后会创建线程到maximumPoolSize个，超过corePoolSize的线程会空闲timeout时间自动退出。
@@ -156,6 +158,27 @@ ThreadPoolExecutor的构造参数:
 踩坑记录: 调用.execute(Runnable command)会command执行过程抛出异常会直接打印出来，调用.submit()方法且没有调用future.get()的时候不会打印异常。
 
 如何正确的关闭线程池:
+ThreadPoolExecutor提供了shutdown()和shutdownNow()两种方法实现线程池关闭.
 
+shutdown():关闭线程池，不再接受新的请求，等待正在执行任务的线程结束后关闭线程。
+
+	1. 获取全局锁
+	2. 将全局状态cas到STOP，作用是不接受新的请求
+	3. 遍历所有的线程，如果正在执行（每个线程执行过程中也会持有一个锁，如果tryLock不成功说明线程正在执行）则忽略，否则调用thread.interrupt()通知线程中断（空闲线程响应中断请求并退出）
+	4. 正在执行的线程执行完毕后发现状态为stop，自动退出。
+
+如果一个线程长时间无限循环执行则永远不会停止。
+
+shutdownNow():关闭线程池，不再接受新的请求，直接停止所有的线程。
+
+	1. 获取全局锁
+	2. 将全局状态cas到STOP，作用是不接受新的请求
+	3. 遍历所有的线程，直接调用interrupt通知线程中断
+
+如果一个线程不响应中断长时间无限循环执行则永远不会停止
+
+在java中不能直接stop一个线程，外部只能调用thread.interrupt()通知中断，至于线程本身是否要退出则由线程内部自己决定
+	1. 线程在wait/sleep的时候收到interrupt后会抛出异常，可以catch异常决定是否退出
+	2. 可以设置检查点，检查Thread.interrupted()状态，发现中断了决定是否退出
 
 
