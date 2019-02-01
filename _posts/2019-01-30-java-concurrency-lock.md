@@ -68,7 +68,9 @@ mark word(标记字段),采用不定长的方式，用于存储运行时对象�
 ReentrantLock内部有FairSync和NonFairSync，可以通过构建对象时指定是否用公平锁，默认非公平锁。非公平锁比公平锁的吞吐量要高。
 
 可中断锁(lockInterruptibly): 
-即尝试获取锁的线程可以响应中断请求停止阻塞
+对于synchronized锁来说，一旦进入同步代码块阻塞等待获得锁，则再调用thread.interrupt()将不起任何作用，即synchronized响应不了中断。对于ReentrantLock来说，当调用的是lockInterruptibly阻塞等待获取锁时，调用thread.interrupt()会响应中断抛出异常。---这里的自动可中断只的都是对于线程一直未获得锁，等待锁的时候响应的中断
+
+需要注意：无论对于synchronized还是reentrantLock来说，一旦线程获取了锁正在执行代码逻辑，这时候调用thread.interrupt(),当前线程都会被标记为interrupted，这时候要想响应中断必须在线程里自己写代码监测判断Thread.interrupted()状态，如果为true做出中断响应即可。
 
 tryLock: 
 可以尝试获取锁，获取不到不阻塞而是直接返回，由应用程序决定下一步操作。
@@ -89,7 +91,7 @@ ConcurrentHashMap分段锁(java1.7)
 何时使用: 
 优先使用synchronized当其满足不了需求需要用到高级特性时用ReentrantLock.
 
-### AQS(AbstractQueuedSynchronizer) ReentrantLock底层实现
+### AQS(Abstract Queued Synchronizer) ReentrantLock底层实现
 
 CAS:首先了解下CAS，即compare-and-swap比较和替换，存在三个基本操作数，内存地址 旧值 新值，当更新的时候只有旧值等于内存地址对应的值才会将内存地址的值更新为新值，否则更新失败。在并发较低的情况下，CAS比锁具有更好的性能。但是它有占用CPU资源和ABA等问题。
 
@@ -99,20 +101,61 @@ AQS底层维护了一个变量volatile int state,如果一个线程想要获取�
 共享锁：多个线程能同时获取到，对应AWS实现为cas到某个<count的值则获取到锁，否则等待。
 
 CountDownLatch: 
-利用AQS实现，state的大小表示可同时持有锁的线程个数，每个线程调用countDown的时候回将state-1，减至0的时候欢迎主线程。
+利用AQS实现，state的大小表示可同时持有锁的线程个数，每个线程调用countDown的时候回将state-1，减至0的时候唤醒主线程。
 
 ReentrantReadWriteLock: 
-利用AQS实现，state分为高16位和低16位，低16位独占写锁，高16位共享锁读锁。
+利用AQS实现，state分为高16位和低16位，低16位独占写锁，高16位共享读锁。
 
 ### Optimistic Lock 乐观锁
 
+乐观锁不是锁特性而是锁的一种使用方式，乐观的认为没有并发或者并发很少，所以先不加锁，等真正更新的时候利用CAS机制更新，如果更新失败再重试。
 
 ### Pessimistic Lock 悲观锁
 
+悲观锁不是锁特性而是锁的一种使用方式，悲观的认为并发一定会发生，在执行操作之前先锁住资源，保证没有其他线程可以操作资源。
+
+### CAS与Synchronized使用场景分析
+
+对于资源竞争较少的场景，因为CAS基于硬件实现，不需要切换线程，自旋的几率又小，所以可以获得更高的性能。
+而对于写竞争压力较大，并发很多的场景，CAS范围会浪费CPU资源，性能不如Synchronized。
+
+### ThreadLocal
+上面讲到的解决并发问题的方案是对同一个共享资源加锁，ThreadLocal提供了另外一种思路每个线程内部独占资源，互不影响。
+ThreadLocal的实现原理是，在Thread里面维护一个ThreadLocalMap,其中key为ThreadLocal对象，value为往ThreadLocal中设置的值，从而实现对象绑定到线程，避免并发问题。
+
+应用实例: 
+保存数据库连接，实现事务
+保存SimpleDateFormat(1.8及以后用DateTimeFormatter替代)
+
+踩坑记录: 
+通常我们都用线程池实现线程复用，避免频繁创建成本和资源耗尽风险。比如对于Tomcat而言内部是线程池机制，一个请求过来后分配一个线程处理，设置对象到ThreadLocal中，线程使用对象，请求结束，线程自动回到线程池。这个流程缺失了一个清空ThreadLocal对象的操作，因为线程复用，如果不清空，别的线程在复用的时候可能拿到之前线程设置到ThreadLocal中的值。
 
 
 ### 线程池
-### ThreadLocal
+
+可以设想一下，如果没有池，每次需要线程的时候直接新建一个，如果某一时刻大量请求涌入会创建大量的线程，然而对于服务器或单进程而言，可承受的最大线程个数是有上限的，如果不限制必然会导致超过上限，整个服务直接挂掉。每次线程的新建都需要时间，通过线程池实现线程复用避免了频繁创建的开销。java提供了线程池的支持。
+
+ThreadPoolExecutor的构造参数:
+1. corePoolSize 核心线程个数
+2. maximumPoolSize 最大的线程个数
+3. keepAliveTime、unit 超过核心线程数的线程空闲的时间
+4. BlockingQueue<Runnable> workQueue 阻塞队列
+5. RejectedExecutionHandler handler
+
+各个参数作用为当需要分配线程的时候
+1. 如果线程池个数 < corePoolSize,则直接新建一个线程处理。否则将请求放入阻塞队列。
+2. 阻塞队列有有限和无限阻塞队列之分，如果是无限阻塞队列则后续所有的请求都会放到这个队列（坑:需要注意如果无限堆积可能OOM）。
+3. 如果是有限队列当队列满后会创建线程到maximumPoolSize个，超过corePoolSize的线程会空闲timeout时间自动退出。
+4. 如果线程池的个数已经达到了maximumPoolSize，再有请求进来就要执行Reject policy,有如下四种policy.
+
+    1. AbortPolicy 直接抛出异常
+    2. DiscardPolicy 直接丢弃当前任务
+    3. DiscardOldestPolicy 直接丢弃最老的任务
+    4. CallerRunsPolicy 直接用请求线程池的线程的线程执行任务
+
+踩坑记录: 调用.execute(Runnable command)会command执行过程抛出异常会直接打印出来，调用.submit()方法且没有调用future.get()的时候不会打印异常。
+
+如何正确的关闭线程池:
 
 
 
